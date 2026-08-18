@@ -88,7 +88,7 @@ namespace Term {
 		}
 	}
 
-	bool refresh(bool only_check) {
+	bool refresh(bool only_check) { if (getenv("BTOP_WEB")) return false;
 		// Query dimensions of '/dev/tty' of the 'STDOUT_FILENO' isn't available.
 		// This variable is set in those cases to avoid calls to ioctl
 		constinit static bool uses_dev_tty = false;
@@ -148,9 +148,10 @@ namespace Term {
 	}
 
 	bool init() {
+		if (getenv("BTOP_WEB")) { width = 100; height = 50; initialized = true; return true; }
 		if (not initialized) {
 			initialized = (bool)isatty(STDIN_FILENO);
-			if (initialized) {
+			if (initialized && !getenv("BTOP_WEB")) {
 				tcgetattr(STDIN_FILENO, &initial_settings);
 				current_tty = (ttyname(STDIN_FILENO) != nullptr ? static_cast<string>(ttyname(STDIN_FILENO)) : "unknown");
 
@@ -174,7 +175,7 @@ namespace Term {
 	}
 
 	void restore() {
-		if (initialized) {
+		if (initialized && !getenv("BTOP_WEB")) {
 			tcsetattr(STDIN_FILENO, TCSANOW, &initial_settings);
 			cout << mouse_off << clear << Fx::reset << normal_screen << show_cursor << flush;
 			initialized = false;

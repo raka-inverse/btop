@@ -716,12 +716,14 @@ namespace Runner {
 				}
 			}
 
-			//? If overlay isn't empty, print output without color and then print overlay on top
-			const bool term_sync = Config::getB("terminal_sync");
-			cout << (term_sync ? Term::sync_start : "") << (conf.overlay.empty()
-					? output
-					: (output.empty() ? "" : Fx::ub + Theme::c("inactive_fg") + Fx::uncolor(output)) + conf.overlay)
-				<< (term_sync ? Term::sync_end : "") << flush;
+			if (!getenv("BTOP_WEB")) {
+				//? If overlay isn't empty, print output without color and then print overlay on top
+				const bool term_sync = Config::getB("terminal_sync");
+				cout << (term_sync ? Term::sync_start : "") << (conf.overlay.empty()
+						? output
+						: (output.empty() ? "" : Fx::ub + Theme::c("inactive_fg") + Fx::uncolor(output)) + conf.overlay)
+					<< (term_sync ? Term::sync_end : "") << flush;
+			}
 		}
 		//* ----------------------------------------------- THREAD LOOP -----------------------------------------------
 		return {};
@@ -743,11 +745,11 @@ namespace Runner {
 
 		if (box == "overlay") {
 			const bool term_sync = Config::getB("terminal_sync");
-			cout << (term_sync ? Term::sync_start : "") << Global::overlay << (term_sync ? Term::sync_end : "") << flush;
+			if (!getenv("BTOP_WEB")) { cout << (term_sync ? Term::sync_start : "") << Global::overlay << (term_sync ? Term::sync_end : "") << flush; }
 		}
 		else if (box == "clock") {
 			const bool term_sync = Config::getB("terminal_sync");
-			cout << (term_sync ? Term::sync_start : "") << Global::clock << (term_sync ? Term::sync_end : "") << flush;
+			if (!getenv("BTOP_WEB")) { cout << (term_sync ? Term::sync_start : "") << Global::clock << (term_sync ? Term::sync_end : "") << flush; }
 		}
 		else {
 			Config::unlock();
@@ -1095,7 +1097,7 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 
 	//? Print out box outlines
 	const bool term_sync = Config::getB("terminal_sync");
-	cout << (term_sync ? Term::sync_start : "") << Cpu::box << Mem::box << Net::box << Proc::box << (term_sync ? Term::sync_end : "") << flush;
+	if (!getenv("BTOP_WEB")) { cout << (term_sync ? Term::sync_start : "") << Cpu::box << Mem::box << Net::box << Proc::box << (term_sync ? Term::sync_end : "") << flush; }
 
 
 	//? ------------------------------------------------ MAIN LOOP ----------------------------------------------------
