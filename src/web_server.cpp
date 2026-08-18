@@ -69,7 +69,7 @@ namespace WebServer {
                         <div class="bar-bg"><div class="bar-fg" :style="{width: c + '%', background: '#ff79c6'}"></div></div>
                     </div>
                 </div>
-                <div id="cpuChart"></div>
+                <div id="cpuChart" style="margin-top:15px;"></div>
             </div>
 
             <!-- GPU Panel (Optional) -->
@@ -99,6 +99,7 @@ namespace WebServer {
                     <div class="flex" style="margin-top:20px;"><span>Swap Used</span> <span>{{ formatBytes(mem.swap_used) }} / {{ formatBytes(mem.swap_total) }}</span></div>
                     <div class="bar-bg"><div class="bar-fg" :style="{width: (mem.swap_used / (mem.swap_total||1) * 100) + '%', background: '#ffb86c'}"></div></div>
                 </div>
+                <div id="memChart" style="margin-top:15px;"></div>
             </div>
             
             <!-- Disks Panel -->
@@ -117,11 +118,13 @@ namespace WebServer {
                         <td>{{formatBytes(d.io_write)}}</td>
                     </tr>
                 </table>
+                <div id="diskChart" style="margin-top:15px;"></div>
             </div>
 
             <!-- Network Panel -->
             <div class="panel">
                 <h2>Network</h2>
+                <div style="font-size: 0.9rem; margin-bottom: 5px; color: #8be9fd;">Interface: {{ net.iface || "N/A" }} ({{ getNetType(net.iface) }})</div>
                 <div class="flex">
                     <span style="color: #50fa7b;">▼ DL: {{ formatBytes(net.download) }}/s</span>
                     <span style="color: #ff5555;">▲ UL: {{ formatBytes(net.upload) }}/s</span>
@@ -169,7 +172,16 @@ namespace WebServer {
                 const cpu = ref({ total: 0, hz: "", watts: 0, cores: [], temps: [] });
                 const mem = ref({ total: 1, used: 0, available: 0, cached: 0, free: 0, swap_used: 0, swap_total: 1 });
                 const disks = ref([]);
-                const net = ref({ download: 0, upload: 0 });
+                const net = ref({ download: 0, upload: 0, iface: "" });
+
+                const getNetType = (iface) => {
+                    if (!iface) return "Unknown";
+                    const lower = iface.toLowerCase();
+                    if (lower.startsWith("wl") || lower.includes("wifi")) return "WiFi";
+                    if (lower.startsWith("e") || lower.startsWith("en")) return "Ethernet";
+                    if (lower === "lo") return "Loopback";
+                    return "Ethernet";
+                };
                 const procs = ref([]);
                 const gpus = ref([]);
                 
@@ -177,8 +189,9 @@ namespace WebServer {
                 const sortKey = ref("cpu_p");
                 const sortAsc = ref(false);
 
-                let cpuChart, netChart;
+                let cpuChart, netChart, memChart, diskChart;
                 const timeData = [], cpuData = [], dlData = [], ulData = [];
+                const memData = [], swapData = [], diskReadData = [], diskWriteData = [];
 
                 const formatBytes = (bytes) => {
                     if (bytes === 0 || !bytes) return '0 B';
@@ -231,24 +244,29 @@ namespace WebServer {
                     return `${dayName}, ${day} ${month} ${year} - ${h}:${m}:${s}`;
                 });
 
+                
                 const initCharts = () => {
-                    const makeOpts = (color1, color2) => ({
-                        width: document.querySelector('.panel').clientWidth - 40, height: 150,
-                        legend: { show: false }, // Hide the Time/Value legend
+                    const makeOpts = (colors, yRange) => ({
+                        width: document.querySelector('.panel').clientWidth - 40, height: 160,
+                        legend: { show: false }, cursor: { show: false },
                         axes: [
-                            { stroke: "#f8f8f2", grid: { stroke: "#44475a" } },
-                            { stroke: "#f8f8f2", grid: { stroke: "#44475a" } }
+                            { stroke: "#888", grid: { stroke: "#333", width: 1 }, space: 40 },
+                            { stroke: "#888", grid: { stroke: "#333", width: 1 }, space: 30, values: (u, vals, space) => vals.map(v => formatBytes(v)) }
                         ],
-                        scales: { x: { time: true }, y: { range: [0, null] } },
+                        scales: { x: { time: true }, y: { range: yRange || [0, null] } },
                         series: [
                             {},
-                            { stroke: color1, fill: color1 + "33", width: 2, paths: uPlot.paths.spline() },
-                            ...(color2 ? [{ stroke: color2, fill: color2 + "33", width: 2, paths: uPlot.paths.spline() }] : [])
+                            ...colors.map(color => ({ stroke: color, fill: color + "40", width: 2, paths: uPlot.paths.spline() }))
                         ]
                     });
 
-                    cpuChart = new uPlot(makeOpts("#ff79c6"), [timeData, cpuData], document.getElementById("cpuChart"));
-                    netChart = new uPlot(makeOpts("#50fa7b", "#ff5555"), [timeData, dlData, ulData], document.getElementById("netChart"));
+                    const cpuOpts = makeOpts(["#ff5555"], [0, 100]);
+                    cpuOpts.axes[1].values = (u, vals, space) => vals.map(v => v + "%");
+                    
+                    cpuChart = new uPlot(cpuOpts, [timeData, cpuData], document.getElementById("cpuChart"));
+                    memChart = new uPlot(makeOpts(["#bd93f9", "#ffb86c"]), [timeData, memData, swapData], document.getElementById("memChart"));
+                    diskChart = new uPlot(makeOpts(["#50fa7b", "#ff5555"]), [timeData, diskReadData, diskWriteData], document.getElementById("diskChart"));
+                    netChart = new uPlot(makeOpts(["#50fa7b", "#ff5555"]), [timeData, dlData, ulData], document.getElementById("netChart"));
                 };
 
                 onMounted(() => {
@@ -271,26 +289,39 @@ namespace WebServer {
                             procs.value = data.procs || procs.value;
                             gpus.value = data.gpus || gpus.value;
 
+                            
                             const t = server_time.value;
                             timeData.push(t); cpuData.push(cpu.value.total);
                             dlData.push(net.value.download); ulData.push(net.value.upload);
+                            memData.push(mem.value.used); swapData.push(mem.value.swap_used);
+                            
+                            let dR = 0, dW = 0;
+                            if (disks.value && disks.value.length > 0) {
+                                disks.value.forEach(d => { dR += d.io_read; dW += d.io_write; });
+                            }
+                            diskReadData.push(dR); diskWriteData.push(dW);
                             
                             if (timeData.length > 60) {
                                 timeData.shift(); cpuData.shift(); dlData.shift(); ulData.shift();
+                                memData.shift(); swapData.shift(); diskReadData.shift(); diskWriteData.shift();
                             }
 
                             cpuChart.setData([timeData, cpuData]);
                             netChart.setData([timeData, dlData, ulData]);
+                            memChart.setData([timeData, memData, swapData]);
+                            diskChart.setData([timeData, diskReadData, diskWriteData]);
+
                         } catch (e) { console.error(e); }
                     }, 1000);
                 });
 
-                return { hostname, os_name, cpu, mem, disks, net, procs, gpus, filter, sortedProcs, sortBy, sortIndicator, formatBytes, formattedUptime, formattedTime };
+                return { hostname, os_name, cpu, mem, disks, net, procs, gpus, filter, sortedProcs, sortBy, sortIndicator, formatBytes, formattedUptime, formattedTime, getNetType };
             }
         }).mount('#app');
     </script>
 </body>
 </html>
+
 )====";
 
     std::string get_os_name() {
@@ -397,6 +428,7 @@ namespace WebServer {
 
                 auto& net = Net::collect(true);
                 j["net"]["download"] = net.bandwidth.count("download") && !net.bandwidth.at("download").empty() ? net.bandwidth.at("download").back() : 0;
+                j["net"]["iface"] = Net::selected_iface;
                 j["net"]["upload"] = net.bandwidth.count("upload") && !net.bandwidth.at("upload").empty() ? net.bandwidth.at("upload").back() : 0;
 
                 auto& procs = Proc::collect(true);
