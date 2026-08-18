@@ -62,6 +62,7 @@ namespace WebServer {
             <!-- CPU Panel -->
             <div class="panel">
                 <h2>CPU Usage <span style="float:right; font-size:0.9rem; color:#f8f8f2;">{{ cpu.hz }} | {{ cpu.watts }}W</span></h2>
+                <h3 v-if="cpu.name" style="margin:0 0 5px 0; color:#8be9fd;">{{ cpu.name }}</h3>
                 <h3 style="margin:0 0 10px 0;">Total: {{ cpu.total }}%</h3>
                 <div class="core-grid">
                     <div v-for="(c, i) in cpu.cores" :key="i" class="stat-box">
@@ -169,7 +170,7 @@ namespace WebServer {
                 const uptime_sec = ref(0);
                 const server_time = ref(Date.now() / 1000);
 
-                const cpu = ref({ total: 0, hz: "", watts: 0, cores: [], temps: [] });
+                const cpu = ref({ name: "", total: 0, hz: "", watts: 0, cores: [], temps: [] });
                 const mem = ref({ total: 1, used: 0, available: 0, cached: 0, free: 0, swap_used: 0, swap_total: 1 });
                 const disks = ref([]);
                 const net = ref({ download: 0, upload: 0, iface: "" });
@@ -366,6 +367,7 @@ namespace WebServer {
 
                 auto& cpu = Cpu::collect(true);
                 j["cpu"]["total"] = cpu.cpu_percent.count("total") && !cpu.cpu_percent.at("total").empty() ? cpu.cpu_percent.at("total").back() : 0;
+                j["cpu"]["name"] = Cpu::cpuName;
                 j["cpu"]["hz"] = Cpu::cpuHz;
                 j["cpu"]["watts"] = cpu.usage_watts;
                 
