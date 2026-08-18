@@ -74,7 +74,7 @@ namespace WebServer {
             </div>
 
             <!-- GPU Panel (Optional) -->
-            <div class="panel" v-if="gpus && gpus.length > 0">
+            <div class="panel" v-show="gpus && gpus.length > 0">
                 <h2>GPU (Graphics Processing Unit)</h2>
                 <div v-for="(g, i) in gpus" :key="i" style="margin-bottom: 15px;">
                     <h3 style="margin:0 0 10px 0; color:#8be9fd;">{{ g.name }}</h3>
@@ -86,6 +86,10 @@ namespace WebServer {
                         <div class="bar-bg"><div class="bar-fg" :style="{width: (g.mem_total > 0 ? (g.mem_used / g.mem_total * 100) : 0) + '%', background: '#f1fa8c'}"></div></div>
                     </div>
                 </div>
+                <div style="font-size: 0.85rem; color: #8be9fd; margin-bottom: 5px; margin-top:15px;">GPU Usage</div>
+                <div id="gpuUsageChart"></div>
+                <div style="font-size: 0.85rem; color: #f1fa8c; margin-bottom: 5px; margin-top:15px;">VRAM Usage</div>
+                <div id="gpuVramChart"></div>
             </div>
 
             <!-- Memory Panel -->
@@ -190,9 +194,10 @@ namespace WebServer {
                 const sortKey = ref("cpu_p");
                 const sortAsc = ref(false);
 
-                let cpuChart, netChart, memChart, diskChart;
+                let cpuChart, netChart, memChart, diskChart, gpuUsageChart, gpuVramChart;
                 const timeData = [], cpuData = [], dlData = [], ulData = [];
                 const memData = [], swapData = [], diskReadData = [], diskWriteData = [];
+                const gpuUsageData = [], gpuVramData = [];
 
                 const formatBytes = (bytes) => {
                     if (bytes === 0 || !bytes) return '0 B';
@@ -268,6 +273,14 @@ namespace WebServer {
                     memChart = new uPlot(makeOpts(["#bd93f9", "#ffb86c"]), [timeData, memData, swapData], document.getElementById("memChart"));
                     diskChart = new uPlot(makeOpts(["#50fa7b", "#ff5555"]), [timeData, diskReadData, diskWriteData], document.getElementById("diskChart"));
                     netChart = new uPlot(makeOpts(["#50fa7b", "#ff5555"]), [timeData, dlData, ulData], document.getElementById("netChart"));
+
+                    const gpuUsageOpts = makeOpts(["#8be9fd"], [0, 100]);
+                    gpuUsageOpts.axes[1].values = (u, vals, space) => vals.map(v => v + "%");
+                    gpuUsageChart = new uPlot(gpuUsageOpts, [timeData, gpuUsageData], document.getElementById("gpuUsageChart"));
+
+                    const gpuVramOpts = makeOpts(["#f1fa8c"], [0, 100]);
+                    gpuVramOpts.axes[1].values = (u, vals, space) => vals.map(v => v + "%");
+                    gpuVramChart = new uPlot(gpuVramOpts, [timeData, gpuVramData], document.getElementById("gpuVramChart"));
                 };
 
                 onMounted(() => {
@@ -302,15 +315,29 @@ namespace WebServer {
                             }
                             diskReadData.push(dR); diskWriteData.push(dW);
                             
+                            let gUsg = 0, gVram = 0;
+                            if (gpus.value && gpus.value.length > 0) {
+                                gpus.value.forEach(g => {
+                                    gUsg += g.usage;
+                                    gVram += g.mem_total > 0 ? (g.mem_used / g.mem_total * 100) : 0;
+                                });
+                                gUsg = gUsg / gpus.value.length;
+                                gVram = gVram / gpus.value.length;
+                            }
+                            gpuUsageData.push(gUsg); gpuVramData.push(gVram);
+                            
                             if (timeData.length > 60) {
                                 timeData.shift(); cpuData.shift(); dlData.shift(); ulData.shift();
                                 memData.shift(); swapData.shift(); diskReadData.shift(); diskWriteData.shift();
+                                gpuUsageData.shift(); gpuVramData.shift();
                             }
 
                             cpuChart.setData([timeData, cpuData]);
                             netChart.setData([timeData, dlData, ulData]);
                             memChart.setData([timeData, memData, swapData]);
                             diskChart.setData([timeData, diskReadData, diskWriteData]);
+                            gpuUsageChart.setData([timeData, gpuUsageData]);
+                            gpuVramChart.setData([timeData, gpuVramData]);
 
                         } catch (e) { console.error(e); }
                     }, 1000);
