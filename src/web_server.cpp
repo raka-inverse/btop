@@ -340,7 +340,7 @@ namespace WebServer {
                             gpuVramChart.setData([timeData, gpuVramData]);
 
                         } catch (e) { console.error(e); }
-                    }, 1000);
+                    }, 2000);
                 });
 
                 return { hostname, os_name, cpu, mem, disks, net, procs, gpus, filter, sortedProcs, sortBy, sortIndicator, formatBytes, formattedUptime, formattedTime, getNetType };
@@ -462,7 +462,9 @@ namespace WebServer {
 
                 auto& procs = Proc::collect(true);
                 auto& p_list = j["procs"] = json::array();
+                int proc_count = 0;
                 for (const auto& p : procs) {
+                    if (proc_count++ >= 100) break;
                     json pj;
                     pj["pid"] = p.pid;
                     pj["name"] = p.name;
